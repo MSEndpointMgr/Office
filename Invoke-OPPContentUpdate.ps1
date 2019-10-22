@@ -33,15 +33,15 @@
 #>
 [CmdletBinding(SupportsShouldProcess=$true)]
 param(
-    [parameter(Mandatory=$true, HelpMessage="Specify the full path to the Office application content source.")]
+    [parameter(Mandatory=$false, HelpMessage="Specify the full path to the Office application content source.")]
     [ValidateNotNullOrEmpty()]
     [string]$OfficePackagePath = "E:\CMsource\Apps\Microsoft\Office 365 ProPlus\x64",
 
-    [parameter(Mandatory=$true, HelpMessage="Specify the Office application display name.")]
+    [parameter(Mandatory=$false, HelpMessage="Specify the Office application display name.")]
     [ValidateNotNullOrEmpty()]
     [string]$OfficeApplicationName = "Office 365 ProPlus 64-bit (Semi-Annual)",
 
-    [parameter(Mandatory=$true, HelpMessage="Specify the Office application configuration file name, e.g. 'configuration.xml'.")]
+    [parameter(Mandatory=$false, HelpMessage="Specify the Office application configuration file name, e.g. 'configuration.xml'.")]
     [ValidateNotNullOrEmpty()]
     [string]$OfficeConfigurationFile = "configuration.xml"
 )

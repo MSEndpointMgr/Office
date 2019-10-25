@@ -17,33 +17,43 @@
 .PARAMETER OfficeConfigurationFile
     Specify the Office application configuration file name, e.g. 'configuration.xml'.
 
+.PARAMETER SkipDetectionMethodUpdate
+    When specified, the detection method for the specified Office 365 ProPlus application will not be updated.
+
 .EXAMPLE
     # Update the content of an Office 365 ProPlus application named 'Office 365 ProPlus 64-bit' to the latest version:
     .\Invoke-OPPContentUpdate.ps1 -OfficePackagePath "C:\Source\Apps\Office365\x64" -OfficeApplicationName "Office 365 ProPlus 64-bit" -OfficeConfigurationFile "configuration.xml" -Verbose
+
+    # Update the content of an Office 365 ProPlus application named 'Office 365 ProPlus 64-bit' to the latest version, but don't update the application detection method:
+    .\Invoke-OPPContentUpdate.ps1 -OfficePackagePath "C:\Source\Apps\Office365\x64" -OfficeApplicationName "Office 365 ProPlus 64-bit" -OfficeConfigurationFile "configuration.xml" -SkipDetectionMethodUpdate -Verbose
 
 .NOTES
     FileName:    Invoke-OPPContentUpdate.ps1
     Author:      Nickolaj Andersen
     Contact:     @NickolajA
     Created:     2019-10-22
-    Updated:     2019-10-22
+    Updated:     2019-10-25
 
     Version history:
     1.0.0 - (2019-10-22) Script created
+    1.0.1 - (2019-10-25) Added the SkipDetectionMethodUpdate parameter to provide functionality that will not update the detection method
 #>
-[CmdletBinding(SupportsShouldProcess=$true)]
+[CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [parameter(Mandatory=$false, HelpMessage="Specify the full path to the Office application content source.")]
+    [parameter(Mandatory = $false, HelpMessage = "Specify the full path to the Office application content source.")]
     [ValidateNotNullOrEmpty()]
     [string]$OfficePackagePath = "E:\CMsource\Apps\Microsoft\Office 365 ProPlus\x64",
 
-    [parameter(Mandatory=$false, HelpMessage="Specify the Office application display name.")]
+    [parameter(Mandatory = $false, HelpMessage = "Specify the Office application display name.")]
     [ValidateNotNullOrEmpty()]
     [string]$OfficeApplicationName = "Office 365 ProPlus 64-bit (Semi-Annual)",
 
-    [parameter(Mandatory=$false, HelpMessage="Specify the Office application configuration file name, e.g. 'configuration.xml'.")]
+    [parameter(Mandatory = $false, HelpMessage = "Specify the Office application configuration file name, e.g. 'configuration.xml'.")]
     [ValidateNotNullOrEmpty()]
-    [string]$OfficeConfigurationFile = "configuration.xml"
+    [string]$OfficeConfigurationFile = "configuration.xml",
+
+    [parameter(Mandatory = $false, HelpMessage = "When specified, the detection method for the specified Office 365 ProPlus application will not be updated.")]
+    [switch]$SkipDetectionMethodUpdate
 )
 Begin {
     # Import ConfigMgr module, required to update the detection method of the Office application
@@ -96,7 +106,7 @@ Process {
     try {
         # Download latest Office Deployment Tool
         $ODTDownloadURL = "https://www.microsoft.com/en-us/download/confirmation.aspx?id=49117"
-        $WebResponseURL = ((Invoke-WebRequest -Uri $ODTDownloadURL -UseBasicParsing -ErrorAction Stop).links | Where-Object { $_.outerHTML -like "*click here to download manually*" }).href
+        $WebResponseURL = ((Invoke-WebRequest -Uri $ODTDownloadURL -UseBasicParsing -ErrorAction Stop -Verbose:$false).links | Where-Object { $_.outerHTML -like "*click here to download manually*" }).href
         $ODTFileName = Split-Path -Path $WebResponseURL -Leaf
         $ODTFilePath = (Join-Path -Path $env:windir -ChildPath "Temp")
         Write-Verbose -Message "Attempting to download latest Office Deployment Toolkit executable"
@@ -164,56 +174,62 @@ Process {
                                     $OfficeDataLatestVersion = (Get-ChildItem -Path $OfficeDataFolderRoot -Directory -ErrorAction Stop).Name
                                     Write-Verbose -Message "Office 365 ProPlus application content is now determined at version: $($OfficeDataLatestVersion)"
 
-                                    try {
-                                        # Set location to ConfigMgr drive
-                                        Write-Verbose -Message "Changing location to ConfigMgr drive: $($SiteCode):"
-                                        Set-Location -Path ($SiteCode + ":") -ErrorAction Stop
-
+                                    if (-not($PSBoundParameters["SkipDetectionMethodUpdate"])) {
                                         try {
-                                            # Get Office application deployment type object
-                                            Write-Verbose -Message "Attempting to retrieve Office 365 ProPlus application deployment type for application: $($OfficeApplicationName)"
-                                            $OfficeDeploymentType = Get-CMDeploymentType -ApplicationName $OfficeApplicationName -ErrorAction Stop
-
+                                            # Set location to ConfigMgr drive
+                                            Write-Verbose -Message "Changing location to ConfigMgr drive: $($SiteCode):"
+                                            Set-Location -Path ($SiteCode + ":") -ErrorAction Stop -Verbose:$false
+    
                                             try {
-                                                # Create a new registry detection method
-                                                Write-Verbose -Message "Attempting to create new registry detection clause object for Office 365 ProPlus application deployment type: $($OfficeDeploymentType.Name)"
-                                                $DetectionClauseArgs = @{
-                                                    ExpressionOperator = "GreaterEquals"
-                                                    Hive = "LocalMachine"
-                                                    KeyName = "Software\Microsoft\Office\ClickToRun\Configuration"
-                                                    PropertyType = "Version"
-                                                    ValueName = "VersionToReport"
-                                                    ExpectedValue = $OfficeDataLatestVersion
-                                                    Value = $true
-                                                    ErrorAction = "Stop"
-                                                }
-                                                $DetectionClauseRegistryKeyValue = New-CMDetectionClauseRegistryKeyValue @DetectionClauseArgs
-
+                                                # Get Office application deployment type object
+                                                Write-Verbose -Message "Attempting to retrieve Office 365 ProPlus application deployment type for application: $($OfficeApplicationName)"
+                                                $OfficeDeploymentType = Get-CMDeploymentType -ApplicationName $OfficeApplicationName -ErrorAction Stop -Verbose:$false
+    
                                                 try {
-                                                    # Construct string array with logical name of enhanced detection method registry name
-                                                    [string[]]$OfficeApplicationDetectionMethodLogicalName = ([xml]$OfficeDeploymentType.SDMPackageXML).AppMgmtDigest.DeploymentType.Installer.CustomData.EnhancedDetectionMethod.Settings.SimpleSetting.LogicalName
-                                                    Write-Verbose -Message "Enhanced detection method logical name for existing registry detection clause was determined as: $($OfficeApplicationDetectionMethodLogicalName)"
-
-                                                    # Remove existing detection method and add new with updated version info
-                                                    Write-Verbose -Message "Attempting to replace existing detection clause with new containing latest Office 365 ProPlus application content version"
-                                                    Set-CMScriptDeploymentType -InputObject $OfficeDeploymentType -RemoveDetectionClause $OfficeApplicationDetectionMethodLogicalName -AddDetectionClause $DetectionClauseRegistryKeyValue -ErrorAction Stop
-                                                    
-                                                    Write-Verbose -Message "Successfully completed Office 365 ProPlus application content update process"
+                                                    # Create a new registry detection method
+                                                    Write-Verbose -Message "Attempting to create new registry detection clause object for Office 365 ProPlus application deployment type: $($OfficeDeploymentType.Name)"
+                                                    $DetectionClauseArgs = @{
+                                                        ExpressionOperator = "GreaterEquals"
+                                                        Hive = "LocalMachine"
+                                                        KeyName = "Software\Microsoft\Office\ClickToRun\Configuration"
+                                                        PropertyType = "Version"
+                                                        ValueName = "VersionToReport"
+                                                        ExpectedValue = $OfficeDataLatestVersion
+                                                        Value = $true
+                                                        ErrorAction = "Stop"
+                                                        Verbose = $false
+                                                    }
+                                                    $DetectionClauseRegistryKeyValue = New-CMDetectionClauseRegistryKeyValue @DetectionClauseArgs
+    
+                                                    try {
+                                                        # Construct string array with logical name of enhanced detection method registry name
+                                                        [string[]]$OfficeApplicationDetectionMethodLogicalName = ([xml]$OfficeDeploymentType.SDMPackageXML).AppMgmtDigest.DeploymentType.Installer.CustomData.EnhancedDetectionMethod.Settings.SimpleSetting.LogicalName
+                                                        Write-Verbose -Message "Enhanced detection method logical name for existing registry detection clause was determined as: $($OfficeApplicationDetectionMethodLogicalName)"
+    
+                                                        # Remove existing detection method and add new with updated version info
+                                                        Write-Verbose -Message "Attempting to replace existing detection clause with new containing latest Office 365 ProPlus application content version"
+                                                        Set-CMScriptDeploymentType -InputObject $OfficeDeploymentType -RemoveDetectionClause $OfficeApplicationDetectionMethodLogicalName -AddDetectionClause $DetectionClauseRegistryKeyValue -ErrorAction Stop  -Verbose:$false
+                                                        
+                                                        Write-Verbose -Message "Successfully completed Office 365 ProPlus application content update process"
+                                                    }
+                                                    catch [System.Exception] {
+                                                        Write-Warning -Message "Failed to update registry detection clause for Office 365 ProPlus application deployment type. Error message: $($_.Exception.Message)"
+                                                    }
                                                 }
                                                 catch [System.Exception] {
-                                                    Write-Warning -Message "Failed to update registry detection clause for Office 365 ProPlus application deployment type. Error message: $($_.Exception.Message)"
+                                                    Write-Warning -Message "Failed to create new registry detection clause object. Error message: $($_.Exception.Message)"
                                                 }
                                             }
                                             catch [System.Exception] {
-                                                Write-Warning -Message "Failed to create new registry detection clause object. Error message: $($_.Exception.Message)"
-                                            }
+                                                Write-Warning -Message "Failed to retrieve deployment type object for Office 365 ProPlus application. Error message: $($_.Exception.Message)"
+                                            }                                        
                                         }
                                         catch [System.Exception] {
-                                            Write-Warning -Message "Failed to retrieve deployment type object for Office 365 ProPlus application. Error message: $($_.Exception.Message)"
-                                        }                                        
+                                            Write-Warning -Message "Failed to change current location to ConfigMgr drive. Error message: $($_.Exception.Message)"
+                                        }
                                     }
-                                    catch [System.Exception] {
-                                        Write-Warning -Message "Failed to change current location to ConfigMgr drive. Error message: $($_.Exception.Message)"
+                                    else {
+                                        Write-Verbose -Message "Successfully completed Office 365 ProPlus application content update process"
                                     }
                                 }
                                 catch [System.Exception] {

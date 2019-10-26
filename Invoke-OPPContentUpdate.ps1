@@ -18,25 +18,26 @@
     Specify the Office application configuration file name, e.g. 'configuration.xml'.
 
 .PARAMETER SkipDetectionMethodUpdate
-    When specified, the detection method for the specified Office 365 ProPlus application will not be updated.
+    When True, update the detection method for the specified Office 365 ProPlus application.
 
 .EXAMPLE
     # Update the content of an Office 365 ProPlus application named 'Office 365 ProPlus 64-bit' to the latest version:
-    .\Invoke-OPPContentUpdate.ps1 -OfficePackagePath "C:\Source\Apps\Office365\x64" -OfficeApplicationName "Office 365 ProPlus 64-bit" -OfficeConfigurationFile "configuration.xml" -Verbose
+    .\Invoke-OPPContentUpdate.ps1 -OfficePackagePath "C:\Source\Apps\Office365\x64" -OfficeApplicationName "Office 365 ProPlus 64-bit" -OfficeConfigurationFile "configuration.xml" -SkipDetectionMethodUpdate $false -Verbose
 
     # Update the content of an Office 365 ProPlus application named 'Office 365 ProPlus 64-bit' to the latest version, but don't update the application detection method:
-    .\Invoke-OPPContentUpdate.ps1 -OfficePackagePath "C:\Source\Apps\Office365\x64" -OfficeApplicationName "Office 365 ProPlus 64-bit" -OfficeConfigurationFile "configuration.xml" -SkipDetectionMethodUpdate -Verbose
+    .\Invoke-OPPContentUpdate.ps1 -OfficePackagePath "C:\Source\Apps\Office365\x64" -OfficeApplicationName "Office 365 ProPlus 64-bit" -OfficeConfigurationFile "configuration.xml" -SkipDetectionMethodUpdate $true -Verbose
 
 .NOTES
     FileName:    Invoke-OPPContentUpdate.ps1
     Author:      Nickolaj Andersen
     Contact:     @NickolajA
     Created:     2019-10-22
-    Updated:     2019-10-25
+    Updated:     2019-10-26
 
     Version history:
     1.0.0 - (2019-10-22) Script created
     1.0.1 - (2019-10-25) Added the SkipDetectionMethodUpdate parameter to provide functionality that will not update the detection method
+    1.0.2 - (2019-10-26) Added so that Distribution Points will automatically be updated
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
@@ -52,8 +53,9 @@ param(
     [ValidateNotNullOrEmpty()]
     [string]$OfficeConfigurationFile = "configuration.xml",
 
-    [parameter(Mandatory = $false, HelpMessage = "When specified, the detection method for the specified Office 365 ProPlus application will not be updated.")]
-    [switch]$SkipDetectionMethodUpdate
+    [parameter(Mandatory = $false, HelpMessage = "When True, update the detection method for the specified Office 365 ProPlus application.")]
+    [ValidateNotNullOrEmpty()]
+    [bool]$SkipDetectionMethodUpdate = $true
 )
 Begin {
     # Import ConfigMgr module, required to update the detection method of the Office application
@@ -174,20 +176,20 @@ Process {
                                     $OfficeDataLatestVersion = (Get-ChildItem -Path $OfficeDataFolderRoot -Directory -ErrorAction Stop).Name
                                     Write-Verbose -Message "Office 365 ProPlus application content is now determined at version: $($OfficeDataLatestVersion)"
 
-                                    if (-not($PSBoundParameters["SkipDetectionMethodUpdate"])) {
+                                    try {
+                                        # Set location to ConfigMgr drive
+                                        Write-Verbose -Message "Changing location to ConfigMgr drive: $($SiteCode):"
+                                        Set-Location -Path ($SiteCode + ":") -ErrorAction Stop -Verbose:$false
+
                                         try {
-                                            # Set location to ConfigMgr drive
-                                            Write-Verbose -Message "Changing location to ConfigMgr drive: $($SiteCode):"
-                                            Set-Location -Path ($SiteCode + ":") -ErrorAction Stop -Verbose:$false
-    
-                                            try {
-                                                # Get Office application deployment type object
-                                                Write-Verbose -Message "Attempting to retrieve Office 365 ProPlus application deployment type for application: $($OfficeApplicationName)"
-                                                $OfficeDeploymentType = Get-CMDeploymentType -ApplicationName $OfficeApplicationName -ErrorAction Stop -Verbose:$false
-    
+                                            # Get Office application deployment type object
+                                            Write-Verbose -Message "Attempting to retrieve Office 365 ProPlus application deployment type for application: $($OfficeApplicationName)"
+                                            $OfficeDeploymentType = Get-CMDeploymentType -ApplicationName $OfficeApplicationName -ErrorAction Stop -Verbose:$false
+
+                                            if ($SkipDetectionMethodUpdate -eq $false) {
                                                 try {
                                                     # Create a new registry detection method
-                                                    Write-Verbose -Message "Attempting to create new registry detection clause object for Office 365 ProPlus application deployment type: $($OfficeDeploymentType.Name)"
+                                                    Write-Verbose -Message "Attempting to create new registry detection clause object for Office 365 ProPlus application deployment type: $($OfficeDeploymentType.LocalizedDisplayName)"
                                                     $DetectionClauseArgs = @{
                                                         ExpressionOperator = "GreaterEquals"
                                                         Hive = "LocalMachine"
@@ -209,8 +211,6 @@ Process {
                                                         # Remove existing detection method and add new with updated version info
                                                         Write-Verbose -Message "Attempting to replace existing detection clause with new containing latest Office 365 ProPlus application content version"
                                                         Set-CMScriptDeploymentType -InputObject $OfficeDeploymentType -RemoveDetectionClause $OfficeApplicationDetectionMethodLogicalName -AddDetectionClause $DetectionClauseRegistryKeyValue -ErrorAction Stop  -Verbose:$false
-                                                        
-                                                        Write-Verbose -Message "Successfully completed Office 365 ProPlus application content update process"
                                                     }
                                                     catch [System.Exception] {
                                                         Write-Warning -Message "Failed to update registry detection clause for Office 365 ProPlus application deployment type. Error message: $($_.Exception.Message)"
@@ -220,21 +220,29 @@ Process {
                                                     Write-Warning -Message "Failed to create new registry detection clause object. Error message: $($_.Exception.Message)"
                                                 }
                                             }
+                                            
+                                            try {
+                                                # Update Distribution Points
+                                                Write-Verbose -Message "Attempting to update Distribution Points for application: $($OfficeApplicationName)"
+                                                Update-CMDistributionPoint -ApplicationName $OfficeApplicationName -DeploymentTypeName $OfficeDeploymentType.LocalizedDisplayName -ErrorAction Stop -Verbose:$false
+
+                                                Write-Verbose -Message "Successfully completed Office 365 ProPlus application content update process"
+                                            }
                                             catch [System.Exception] {
-                                                Write-Warning -Message "Failed to retrieve deployment type object for Office 365 ProPlus application. Error message: $($_.Exception.Message)"
-                                            }                                        
+                                                Write-Warning -Message "Failed to update Distribution Points for application. Error message: $($_.Exception.Message)"
+                                            }
                                         }
                                         catch [System.Exception] {
-                                            Write-Warning -Message "Failed to change current location to ConfigMgr drive. Error message: $($_.Exception.Message)"
-                                        }
+                                            Write-Warning -Message "Failed to retrieve deployment type object for Office 365 ProPlus application. Error message: $($_.Exception.Message)"
+                                        }                                            
                                     }
-                                    else {
-                                        Write-Verbose -Message "Successfully completed Office 365 ProPlus application content update process"
+                                    catch [System.Exception] {
+                                        Write-Warning -Message "Failed to change current location to ConfigMgr drive. Error message: $($_.Exception.Message)"
                                     }
                                 }
                                 catch [System.Exception] {
                                     Write-Warning -Message "Failed to determine the latest Office 365 application content version. Error message: $($_.Exception.Message)"
-                                }                                
+                                }
                             }
                             catch [System.Exception] {
                                 Write-Warning -Message "Failed to update Office 365 ProPlus application content. Error message: $($_.Exception.Message)"

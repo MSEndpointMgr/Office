@@ -205,7 +205,7 @@ Process {
     
                                                     try {
                                                         # Construct string array with logical name of enhanced detection method registry name
-                                                        [string[]]$OfficeApplicationDetectionMethodLogicalName = ([xml]$OfficeDeploymentType.SDMPackageXML).AppMgmtDigest.DeploymentType.Installer.CustomData.EnhancedDetectionMethod.Settings.SimpleSetting.LogicalName
+                                                        ([xml]$OfficeDeploymentType.SDMPackageXML).AppMgmtDigest.DeploymentType.Installer.CustomData.EnhancedDetectionMethod.Settings.SimpleSetting | where DataType -eq 'Version' | Select-Object LogicalName
                                                         Write-Verbose -Message "Enhanced detection method logical name for existing registry detection clause was determined as: $($OfficeApplicationDetectionMethodLogicalName)"
     
                                                         # Remove existing detection method and add new with updated version info

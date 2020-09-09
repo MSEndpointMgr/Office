@@ -42,6 +42,7 @@
     1.0.1 - (2019-10-25) Added the SkipDetectionMethodUpdate parameter to provide functionality that will not update the detection method
     1.0.2 - (2019-10-26) Added so that Distribution Points will automatically be updated
     1.0.3 - (2020-09-09) Added SiteServer parameter and improved ConfigurationManager module loading to support scheduling this script in system context on a site server with the ConfigMgr console installed
+    1.0.4 - (2020-09-09) Fixed an issue when the SkipDetectionMethodUpdate parameter was set to True, it would remove any additional rules manually added
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
@@ -235,7 +236,7 @@ Process {
     
                                                     try {
                                                         # Construct string array with logical name of enhanced detection method registry name
-                                                        [string[]]$OfficeApplicationDetectionMethodLogicalName = ([xml]$OfficeDeploymentType.SDMPackageXML).AppMgmtDigest.DeploymentType.Installer.CustomData.EnhancedDetectionMethod.Settings.SimpleSetting.LogicalName
+                                                        [string[]]$OfficeApplicationDetectionMethodLogicalName = ([xml]$OfficeDeploymentType.SDMPackageXML).AppMgmtDigest.DeploymentType.Installer.CustomData.EnhancedDetectionMethod.Settings.SimpleSetting | Where-Object { $PSItem.DataType -like "Version" } | Select-Object -ExpandProperty LogicalName
                                                         Write-Verbose -Message "Enhanced detection method logical name for existing registry detection clause was determined as: $($OfficeApplicationDetectionMethodLogicalName)"
     
                                                         # Remove existing detection method and add new with updated version info

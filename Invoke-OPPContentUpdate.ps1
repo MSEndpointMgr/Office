@@ -8,6 +8,9 @@
     - Update the Office 365 ProPlus application content to the latest version
     - Update the detection method of the application in ConfigMgr with the latest versioning details
 
+.PARAMETER SiteServer
+    Site Server where the SMS Provider is installed.
+
 .PARAMETER OfficePackagePath
     Specify the full path to the Office application content source.
 
@@ -38,9 +41,15 @@
     1.0.0 - (2019-10-22) Script created
     1.0.1 - (2019-10-25) Added the SkipDetectionMethodUpdate parameter to provide functionality that will not update the detection method
     1.0.2 - (2019-10-26) Added so that Distribution Points will automatically be updated
+    1.0.3 - (2020-09-09) Added SiteServer parameter and improved ConfigurationManager module loading to support scheduling this script in system context on a site server with the ConfigMgr console installed
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
+    [parameter(Mandatory = $true, HelpMessage = "Site Server where the SMS Provider is installed.")]
+    [ValidateNotNullOrEmpty()]
+    [ValidateScript({Test-Connection -ComputerName $_ -Count 1 -Quiet})]
+    [string]$SiteServer,
+
     [parameter(Mandatory = $false, HelpMessage = "Specify the full path to the Office application content source.")]
     [ValidateNotNullOrEmpty()]
     [string]$OfficePackagePath = "E:\CMsource\Apps\Microsoft\Office 365 ProPlus\x64",
@@ -58,15 +67,36 @@ param(
     [bool]$SkipDetectionMethodUpdate = $true
 )
 Begin {
-    # Import ConfigMgr module, required to update the detection method of the Office application
+    # Determine SiteCode from WMI
     try {
-        Write-Verbose -Message "Attempting to import the Configuration Manager module"
-        Import-Module -Name "$(Split-Path -Path $env:SMS_ADMIN_UI_PATH -Parent)\ConfigurationManager.psd1" -ErrorAction Stop -Verbose:$false
-        $SiteCode = Get-PSDrive -PSProvider CMSite -Verbose:$false | Select-Object -ExpandProperty Name
+        Write-Verbose -Message "Determining Site Code for Site server: '$($SiteServer)'"
+        $SiteCodeObjects = Get-WmiObject -Namespace "root\SMS" -Class SMS_ProviderLocation -ComputerName $SiteServer -ErrorAction Stop
+        foreach ($SiteCodeObject in $SiteCodeObjects) {
+            if ($SiteCodeObject.ProviderForLocalSite -eq $true) {
+                $SiteCode = $SiteCodeObject.SiteCode
+                Write-Verbose -Message "Site Code: $($SiteCode)"
+            }
+        }
     }
     catch [System.Exception] {
-        Write-Warning -Message "$($_.Exception.Message). Line: $($_.InvocationInfo.ScriptLineNumber)"; break
-    }    
+        Write-Warning -Message "Unable to determine site code from specified Configuration Manager site server, specify the site server where the SMS Provider is installed"; break
+    }
+
+    # Import ConfigMgr module, required to update the detection method of the Office application
+    try {
+        Import-Module -Name ConfigurationManager -ErrorAction Stop
+    }
+    catch [System.Exception] {
+        try {
+            Import-Module (Join-Path -Path (($env:SMS_ADMIN_UI_PATH).Substring(0,$env:SMS_ADMIN_UI_PATH.Length-5)) -ChildPath "\ConfigurationManager.psd1") -Force -ErrorAction Stop
+            if ((Get-PSDrive $SiteCode -ErrorAction SilentlyContinue | Measure-Object).Count -ne 1) {
+                New-PSDrive -Name $SiteCode -PSProvider "AdminUI.PS.Provider\CMSite" -Root $SiteServer -ErrorAction Stop
+            }
+        }
+        catch [System.Exception] {
+            Write-Warning -Message "Failed to load the ConfigurationManager module. Error message: $($_.Exception.Message)"; break
+        }
+    }   
 }
 Process {
     # Functions

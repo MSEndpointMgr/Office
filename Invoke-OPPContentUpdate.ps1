@@ -25,10 +25,10 @@
 
 .EXAMPLE
     # Update the content of an Office 365 ProPlus application named 'Office 365 ProPlus 64-bit' to the latest version:
-    .\Invoke-OPPContentUpdate.ps1 -OfficePackagePath "C:\Source\Apps\Office365\x64" -OfficeApplicationName "Office 365 ProPlus 64-bit" -OfficeConfigurationFile "configuration.xml" -SkipDetectionMethodUpdate $false -Verbose
+    .\Invoke-OPPContentUpdate.ps1 -SiteServer "CM01" -OfficePackagePath "C:\Source\Apps\Office365\x64" -OfficeApplicationName "Office 365 ProPlus 64-bit" -OfficeConfigurationFile "configuration.xml" -SkipDetectionMethodUpdate $false -Verbose
 
     # Update the content of an Office 365 ProPlus application named 'Office 365 ProPlus 64-bit' to the latest version, but don't update the application detection method:
-    .\Invoke-OPPContentUpdate.ps1 -OfficePackagePath "C:\Source\Apps\Office365\x64" -OfficeApplicationName "Office 365 ProPlus 64-bit" -OfficeConfigurationFile "configuration.xml" -SkipDetectionMethodUpdate $true -Verbose
+    .\Invoke-OPPContentUpdate.ps1 -SiteServer "CM01" -OfficePackagePath "C:\Source\Apps\Office365\x64" -OfficeApplicationName "Office 365 ProPlus 64-bit" -OfficeConfigurationFile "configuration.xml" -SkipDetectionMethodUpdate $true -Verbose
 
 .NOTES
     FileName:    Invoke-OPPContentUpdate.ps1
@@ -53,7 +53,7 @@ param(
 
     [parameter(Mandatory = $false, HelpMessage = "Specify the full path to the Office application content source.")]
     [ValidateNotNullOrEmpty()]
-    [string]$OfficePackagePath = "E:\CMsource\Apps\Microsoft\Office 365 ProPlus\x64",
+    [string]$OfficePackagePath = "E:\CMSource\Apps\Microsoft\Office 365 ProPlus\x64",
 
     [parameter(Mandatory = $false, HelpMessage = "Specify the Office application display name.")]
     [ValidateNotNullOrEmpty()]
